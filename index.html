@@ -6,16 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>森の変形菌採取</title>
 
-  <!-- MindARとThree.jsの読み込み設定 -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
-    }
-  }
-  </script>
+  <!-- 以前動いていたA-Frame版を使用 -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
     * {
@@ -30,26 +23,22 @@
       color: white;
     }
 
-    #ar-container {
-      position: fixed;
+    /* ARカメラ */
+    a-scene {
+      position: fixed !important;
       inset: 0;
+      width: 100%;
+      height: 100%;
       z-index: 1;
     }
 
-    #ar-container video {
-      position: absolute !important;
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
-      clip-path: circle(min(36vw, 32.5vh) at 50% 43%);
+    /* カメラ映像を虫眼鏡型にする */
+    .mindar-ui-overlay,
+    .mindar-ui-scanning {
+      z-index: 2 !important;
     }
 
-    #ar-container canvas {
-      position: absolute;
-      inset: 0;
-      z-index: 2;
-    }
-
+    /* タイトル */
     .header {
       position: fixed;
       z-index: 10;
@@ -62,6 +51,7 @@
       pointer-events: none;
     }
 
+    /* 虫眼鏡 */
     .magnifier {
       position: fixed;
       z-index: 5;
@@ -92,6 +82,7 @@
       transform-origin: top center;
     }
 
+    /* 案内 */
     .message {
       position: fixed;
       z-index: 10;
@@ -103,21 +94,7 @@
       pointer-events: none;
     }
 
-    button {
-      border: none;
-      background: #d4bd8b;
-      color: #263d2d;
-      padding: 15px 35px;
-      border-radius: 40px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.6;
-    }
-
+    /* スタート画面 */
     .start-area {
       position: fixed;
       z-index: 20;
@@ -137,6 +114,22 @@
       letter-spacing: 3px;
     }
 
+    button {
+      border: none;
+      background: #d4bd8b;
+      color: #263d2d;
+      padding: 15px 35px;
+      border-radius: 40px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+    }
+
+    /* ゲット画面 */
     #success {
       display: none;
       position: fixed;
@@ -175,18 +168,41 @@
 
 <body>
 
-  <div id="ar-container"></div>
+  <!-- ARシーン -->
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+    color-space="sRGB"
+    renderer="colorManagement: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
 
+    <a-camera
+      position="0 0 0"
+      look-controls="enabled: false">
+    </a-camera>
+
+    <!-- 1番目のマーカー -->
+    <a-entity
+      id="marker"
+      mindar-image-target="targetIndex: 0">
+    </a-entity>
+
+  </a-scene>
+
+  <!-- タイトル -->
   <div class="header">
     FOREST EXPLORER
   </div>
 
+  <!-- 虫眼鏡 -->
   <div class="magnifier" id="magnifier"></div>
 
+  <!-- 案内 -->
   <div class="message" id="message">
     森の中から変形菌を探そう
   </div>
 
+  <!-- スタート画面 -->
   <div class="start-area" id="start">
     <h1>森の探索</h1>
     <p>
@@ -198,13 +214,13 @@
     </button>
   </div>
 
+  <!-- ゲット画面 -->
   <div id="success">
     <h1>変形菌 GET!</h1>
 
     <img
       src="https://placehold.co/300x300/e7e2bd/49613c?text=SLIME+MOLD"
-      alt="獲得した変形菌"
-    >
+      alt="獲得した変形菌">
 
     <p>新しい変形菌を発見した！</p>
 
@@ -217,72 +233,59 @@
     </p>
   </div>
 
-  <script type="module">
-    import * as THREE from "three";
-    import { MindARThree } from "mindar-image-three";
+  <script>
+    const scene = document.querySelector("a-scene");
+    const marker = document.querySelector("#marker");
 
-    const startButton = document.getElementById("startButton");
-    const startScreen = document.getElementById("start");
-    const successScreen = document.getElementById("success");
-    const message = document.getElementById("message");
-    const magnifier = document.getElementById("magnifier");
-    const bookButton = document.getElementById("bookButton");
+    const startButton = document.querySelector("#startButton");
+    const startScreen = document.querySelector("#start");
+    const successScreen = document.querySelector("#success");
 
-    let mindarThree = null;
+    const message = document.querySelector("#message");
+    const magnifier = document.querySelector("#magnifier");
+
     let found = false;
+    let started = false;
 
-    bookButton.addEventListener("click", () => {
-      location.href = "zukan.html";
+    // マーカーを発見したとき
+    marker.addEventListener("targetFound", () => {
+      if (found) return;
+
+      found = true;
+
+      message.textContent = "変形菌を発見しました！";
+      magnifier.style.borderColor = "#e6d18d";
+      successScreen.style.display = "flex";
     });
 
-    async function startAR() {
+    // 図鑑へ移動
+    document.querySelector("#bookButton")
+      .addEventListener("click", () => {
+        location.href = "zukan.html";
+      });
+
+    // AR開始
+    startButton.addEventListener("click", async () => {
+      if (started) return;
+
       startButton.disabled = true;
       startButton.textContent = "カメラを準備中...";
 
       try {
-        mindarThree = new MindARThree({
-          container: document.querySelector("#ar-container"),
-          imageTargetSrc: "./targets.mind",
-          maxTrack: 1
-        });
+        const mindarSystem =
+          scene.systems["mindar-image-system"];
 
-        const {
-          renderer,
-          scene,
-          camera
-        } = mindarThree;
+        if (!mindarSystem) {
+          throw new Error("MindARが読み込まれていません。");
+        }
 
-        const anchor = mindarThree.addAnchor(0);
+        await mindarSystem.start();
 
-        anchor.onTargetFound = () => {
-          if (found) return;
-
-          found = true;
-          message.textContent = "変形菌を発見しました！";
-          magnifier.style.borderColor = "#e6d18d";
-          successScreen.style.display = "flex";
-        };
-
-        await mindarThree.start();
-
+        started = true;
         startScreen.classList.add("hidden");
-
-        renderer.setAnimationLoop(() => {
-          renderer.render(scene, camera);
-        });
 
       } catch (error) {
         console.error("AR起動エラー:", error);
-
-        if (mindarThree) {
-          try {
-            await mindarThree.stop();
-          } catch (stopError) {
-            console.error(stopError);
-          }
-
-          mindarThree = null;
-        }
 
         startButton.disabled = false;
         startButton.textContent = "もう一度試す";
@@ -292,9 +295,7 @@
           (error.message || error)
         );
       }
-    }
-
-    startButton.addEventListener("click", startAR);
+    });
   </script>
 
 </body>
