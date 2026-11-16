@@ -501,6 +501,10 @@
         const h = canvasParent.clientHeight;
         const canvas = createCanvas(w, h);
         canvas.parent('game-area');
+        // 表示領域の大きさが変わったら、すぐキャンバスも合わせる
+        if (typeof ResizeObserver !== 'undefined') {
+          new ResizeObserver(() => syncCanvasSize()).observe(canvasParent);
+        }
         pixelDensity(1);
         noFill();
         strokeCap(ROUND);
@@ -1247,6 +1251,7 @@
       }
 
       function draw() {
+        syncCanvasSize(); // 念のため毎フレーム確認する(ずれは安いチェックで防げる)
         drawBackground();
         updateSlime();
         constrainSlimeInsideDish();
@@ -1260,11 +1265,37 @@
       }
 
       function windowResized() {
+        syncCanvasSize();
+      }
+
+      // 画面の表示領域とキャンバスの大きさを常に一致させる。
+      // 両者がずれると、キャンバスが縦か横に引き伸ばされて、円が楕円に見える。
+      // (iPadのSafariのバーの出入りや、向きの切り替えで起こりやすい)
+      function syncCanvasSize() {
         const parent = document.getElementById('game-area');
-        resizeCanvas(parent.clientWidth, parent.clientHeight);
+        const w = parent.clientWidth;
+        const h = parent.clientHeight;
+        if (w === 0 || h === 0 || (w === width && h === height)) return;
+
+        const oldCx = dishCenter.x;
+        const oldCy = dishCenter.y;
+        const oldR = dishRadius;
+
+        resizeCanvas(w, h);
         dishCenter.x = width * 0.5;
         dishCenter.y = height * DISH_CENTER_Y;
         dishRadius = min(width, height) * DISH_SCALE * 0.5;
+
+        // 既にある変形体・餌・子実体も、新しいシャーレの位置と大きさに合わせて動かす
+        // (縦横に均等な倍率で動かすので、形はゆがまない)
+        const k = oldR > 0 ? dishRadius / oldR : 1;
+        const mx = (x) => dishCenter.x + (x - oldCx) * k;
+        const my = (y) => dishCenter.y + (y - oldCy) * k;
+        for (const n of slimeNodes) { n.x = mx(n.x); n.y = my(n.y); }
+        for (const t of slimeTips) { t.x = mx(t.x); t.y = my(t.y); t.vx *= k; t.vy *= k; }
+        for (const f of foods) { f.x = mx(f.x); f.y = my(f.y); }
+        for (const b of fructificationBodies) { b.x = mx(b.x); b.y = my(b.y); }
+        for (const q of particles) { q.x = mx(q.x); q.y = my(q.y); }
       }
     </script>
   </body>
