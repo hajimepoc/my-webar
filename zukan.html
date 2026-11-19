@@ -348,6 +348,33 @@
         pointer-events: none;
       }
       #statusMessage { font-weight: 700; margin-bottom: 4px; }
+      /* リセットと「もう一度観察する」を縦に並べる */
+      .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; align-self: flex-start; }
+      .hud-right button { pointer-events: auto; }
+
+      /* 子実体の形成ゲージ。白い縦線は「見た目が変わりはじめる」時点 */
+      .gauge.morph { position: relative; }
+      #morphFill { height: 100%; width: 0; background: var(--slime); }
+      #morphTick { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255, 255, 255, 0.85); }
+
+      /* 解説ダイアログ */
+      #explainDialog {
+        width: min(620px, calc(100vw - 32px));
+        max-height: calc(100dvh - 48px);
+        overflow: auto;
+        padding: 24px 26px;
+        border: 1px solid rgba(240, 235, 221, 0.25);
+        border-radius: 20px;
+        background: rgba(16, 25, 23, 0.97);
+        color: #f0ebdd;
+        font-size: 1.05rem;
+        line-height: 1.8;
+      }
+      #explainDialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+      #explainDialog h2 { margin: 0 0 12px; font-size: 1.35rem; }
+      #explainDialog ol { margin: 0 0 12px; padding-left: 1.4em; }
+      #explainDialog li { margin-bottom: 8px; }
+      #explainDialog .note { font-size: 0.9rem; opacity: 0.8; margin: 0 0 16px; }
     </style>
   </head>
   <body>
@@ -365,13 +392,21 @@
         <div class="time-display">
           <span class="label">観察開始から</span>
           <span id="elapsedTime">0時間経過</span>
+          <div id="morphGauge" style="display: none; width: 100%; margin-top: 8px">
+            <span class="label" id="morphLabel"></span>
+            <div class="gauge morph"><div id="morphFill"></div><div id="morphTick"></div></div>
+            <span class="label" id="morphStage"></span>
+          </div>
           <div id="starveGauge" style="display: none; width: 100%; margin-top: 8px">
             <span class="label" id="starveLabel"></span>
             <div class="gauge"><div id="starveFill"></div></div>
           </div>
         </div>
 
-        <button id="resetBtn" type="button">リセット</button>
+        <div class="hud-right">
+          <button id="resetBtn" type="button">リセット</button>
+          <button id="observeBtn" class="button-secondary" type="button" style="display: none;">もう一度観察する</button>
+        </div>
       </div>
 
       <div id="game-area" aria-label="変形菌のゲームエリア"></div>
@@ -381,7 +416,7 @@
       <div class="action-row">
         <button id="ffBtn" class="button-secondary" type="button" style="display: none">飢餓を早送り</button>
         <button id="fructifyBtn" class="button-primary" type="button" disabled>光の刺激を与える</button>
-        <button id="observeBtn" class="button-secondary" type="button" style="display: none;">もう一度観察する</button>
+        <button id="explainBtn" class="button-primary" type="button" style="display: none;">解説を見る</button>
       </div>
 
       <div class="help-panel">
@@ -392,6 +427,21 @@
       </div>
 
     </div>
+
+    <!-- 子実体ができたあとに開く解説 -->
+    <dialog id="explainDialog" aria-labelledby="explainTitle">
+      <h2 id="explainTitle">いま見たこと</h2>
+      <ol>
+        <li><strong>変形体は、1つの大きな細胞です。</strong>カビやキノコではなく、アメーバの仲間です。</li>
+        <li><strong>餌を食べて広がります。</strong>餌(オートミール)の成分を感じ取って進み、食べると餌は減っていきます。</li>
+        <li><strong>餌がなくなると、飢えます。</strong>動き続けながら、少しずつ体が細くなります。飢餓が数日(目安は約72時間)続くと、胞子をつくる準備ができます。</li>
+        <li><strong>短い光の刺激が引き金になります。</strong>光を受けたあと、約10時間は見た目が変わりません。</li>
+        <li><strong>全体が子実体に変わります。</strong>光の刺激から約18時間で、変形体は集まって子実体になり、中に胞子ができます。</li>
+        <li><strong>その先があります。</strong>胞子が飛び散り、条件が合うと、小さなアメーバのような細胞が生まれます。それが合体して、また変形体になります。</li>
+      </ol>
+      <p class="note">時間は早送りで、数字は実験でよく使われるモジホコリの報告をもとにした目安です。種や条件で変わります。この展示の動きは、分かりやすいように単純にしてあります。</p>
+      <button id="explainClose" class="button-primary" type="button">閉じる</button>
+    </dialog>
 
     <script>
       // ============================================================
@@ -444,7 +494,9 @@
 
         // ----- 演出 -----
         // 光の刺激を与えたときの閃光の色
-        lightFlash: [255, 245, 200]
+        lightFlash: [255, 245, 200],
+        // 子実体を形成している最中に、シャーレのまわりで脈打つ光の輪
+        morphRing: [255, 245, 200]
       };
 
       // シャーレの大きさと位置(画面の短辺に対する割合)
@@ -515,10 +567,18 @@
 
         resetButton = document.getElementById('resetBtn');
         document.querySelector('.time-display .label').textContent = `観察開始から(早送り:1秒＝${HOURS_PER_SEC}時間)`;
-        document.getElementById('resetBtn').addEventListener('click', resetGame);
+        // リセットを押すと、トップページ(index.html)に戻る
+        document.getElementById('resetBtn').addEventListener('click', () => {
+          location.href = 'index.html';
+        });
         document.getElementById('fructifyBtn').addEventListener('click', startFructification);
         document.getElementById('ffBtn').addEventListener('click', () => { ffOn = !ffOn; });
         document.getElementById('observeBtn').addEventListener('click', resetToObserve);
+
+        // 子実体ができたあとの「解説を見る」
+        const explainDialog = document.getElementById('explainDialog');
+        document.getElementById('explainBtn').addEventListener('click', () => explainDialog.showModal());
+        document.getElementById('explainClose').addEventListener('click', () => explainDialog.close());
         canvasParent.addEventListener('pointerdown', handlePointerDown);
 
         dishCenter.x = width * 0.5;
@@ -963,6 +1023,14 @@
         noFill();
         arc(0, 0, dish * 0.9, dish * 0.9, 0.3, 1.4);
         pop();
+
+        // 子実体を形成している最中は、シャーレのまわりに光の輪をゆっくり脈打たせて、変化の最中だと分かるようにする
+        if (state === 'fructifying') {
+          noFill();
+          stroke(...COLORS.morphRing, 90 + 70 * sin(frameCount * 0.08));
+          strokeWeight(5);
+          circle(cx, cy, dish + 36);
+        }
       }
 
       function drawFood() {
@@ -1115,6 +1183,14 @@
         );
       }
 
+      // 餌を置いたあとの実況
+      function foodNarration() {
+        const now = millis();
+        if (foods.some((f) => f.amount < 1)) return '餌を食べています。';
+        if (foods.every((f) => now - f.placedAt < 2200)) return '餌の成分を感じ取りはじめています。';
+        return '餌に向かっています。';
+      }
+
       function starvedHours() {
         return starveHours;
       }
@@ -1127,13 +1203,33 @@
       function updateStatus() {
         const btn = document.getElementById('fructifyBtn');
         const ff = document.getElementById('ffBtn');
+        // 「もう一度観察する」は、光の刺激のあと(形成中・完成後)に表示する
+        document.getElementById('observeBtn').style.display = state !== 'observe' ? 'inline-flex' : 'none';
+
+        // 子実体の形成ゲージ(形成中と完成後に表示)
+        const morph = document.getElementById('morphGauge');
+        morph.style.display = state === 'observe' ? 'none' : 'block';
+        if (state !== 'observe') {
+          const hh = state === 'fruited' ? MORPH_END_H : Math.min(MORPH_END_H, ((millis() - fructificationStart) / 1000) * HOURS_PER_SEC);
+          document.getElementById('morphFill').style.width = (hh / MORPH_END_H) * 100 + '%';
+          document.getElementById('morphTick').style.left = (MORPH_START_H / MORPH_END_H) * 100 + '%';
+          document.getElementById('morphLabel').textContent = state === 'fruited'
+            ? `子実体ができた(${MORPH_END_H}時間分)`
+            : `子実体を形成中 ${Math.floor(hh)} / ${MORPH_END_H}時間`;
+          document.getElementById('morphStage').textContent = state === 'fruited'
+            ? '完成'
+            : hh < MORPH_START_H ? '準備中:見た目は変わりません' : '形が変わっています';
+        }
+
+        // 子実体ができたら、解説ボタンを表示する
+        document.getElementById('explainBtn').style.display = state === 'fruited' ? 'inline-flex' : 'none';
         const starving = state === 'observe' && everFed && foods.length === 0;
         const competent = isCompetent();
         let msg;
         if (state === 'observe') {
           if (!everFed) msg = '変形体は、1つの細胞が大きく広がった姿です。餌(オートミール)を置くと、その方向へ進みます。';
           else if (isFoodOutOfReach()) msg = '餌が遠くて、変形体が気づけません。変形体は餌から出る成分を感じ取って進むので、近くに置いてみよう。';
-          else if (foods.length > 0) msg = '餌を食べながら広がっています。';
+          else if (foods.length > 0) msg = foodNarration();
           else if (!competent) msg = '餌がなくなりました。変形体は動き続けますが、少しずつ体が細くなり、胞子をつくる準備が体の中で進みます。';
           else msg = '胞子をつくる準備ができました。短い光の刺激が引き金になります。';
           btn.disabled = !competent;
@@ -1143,7 +1239,7 @@
             ? '光を受けました。見た目はまだ変わりませんが、体の中では胞子形成の準備が進んでいます。'
             : '変形体が集まり、子実体に変わっています。';
         } else {
-          msg = `子実体ができました。中に胞子が入っています。実際には、光の刺激から約${MORPH_END_H}時間かかります。`;
+          msg = `子実体ができました。中に胞子が入っています。実際には、光の刺激から約${MORPH_END_H}時間かかります。「解説を見る」で、いま見たことを確認できます。`;
         }
         const el = document.getElementById('statusMessage');
         if (el.textContent !== msg) el.textContent = msg;
