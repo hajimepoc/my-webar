@@ -51,8 +51,12 @@
       pointer-events: none;
     }
 
-    /* 虫眼鏡 */
+    /* 虫眼鏡(位置と大きさは今まで通り。見た目だけ整えた) */
     .magnifier {
+      /* 調整用の値 */
+      --rim: clamp(7px, 1.6vmin, 12px);   /* 金属の枠の太さ */
+      --shade: 0.5;                        /* レンズの外側を暗くする濃さ(0〜1。0で暗くしない) */
+
       position: fixed;
       z-index: 5;
       width: min(72vw, 65vh);
@@ -60,26 +64,59 @@
       top: 43%;
       left: 50%;
       transform: translate(-50%, -50%);
-      border: 9px solid #c5a77b;
       border-radius: 50%;
       pointer-events: none;
+
+      /* ガラス: 左上の光、斜めの反射、ふちのかげ */
+      background:
+        radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.30) 0, rgba(255, 255, 255, 0) 34%),
+        linear-gradient(125deg, transparent 0 14%, rgba(255, 255, 255, 0.10) 14% 24%, transparent 24%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 62%, rgba(0, 0, 0, 0.22) 100%);
+
       box-shadow:
-        0 0 0 4px rgba(255,255,255,0.25),
-        0 0 25px rgba(0,0,0,0.4);
+        0 0 0 100vmax rgba(24, 38, 30, var(--shade)),  /* レンズの外側を暗くして、のぞいている感じを出す */
+        inset 0 0 22px rgba(0, 0, 0, 0.35),            /* レンズの内側のかげ */
+        0 10px 30px rgba(0, 0, 0, 0.45);               /* 虫眼鏡の下に落ちるかげ */
+      transition: box-shadow 0.4s ease;
     }
 
+    /* 金属の枠(真鍮のような、光を受けた色の変化) */
+    .magnifier::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      padding: var(--rim);
+      background: conic-gradient(from 200deg,
+        #f1e2b8, #b8955f, #7f6139, #d8bf8c, #f6e9c4, #a98550, #f1e2b8);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+    }
+
+    /* 持ち手: 枠の右下から斜めに伸びる(木の柄と、真鍮の留め具) */
     .magnifier::after {
       content: "";
       position: absolute;
-      width: 22%;
-      height: 45%;
-      background: #a9875d;
-      border: 5px solid #d3b78d;
-      border-radius: 20px;
-      right: -15%;
-      bottom: -32%;
-      transform: rotate(-42deg);
-      transform-origin: top center;
+      width: 14%;
+      height: 42%;
+      left: calc(83.95% - 7%);
+      top: 83.95%;
+      transform-origin: 50% 0;
+      transform: rotate(-45deg);
+      border-radius: 0 0 40% 40% / 0 0 14% 14%;
+      background:
+        linear-gradient(180deg, #e3cc9a 0 9%, #7d5f38 9% 11%, #c9ae7c 11% 17%, transparent 17%),
+        linear-gradient(90deg, #5d4125 0%, #9a7747 35%, #cfae78 55%, #7a5a34 100%);
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+    }
+
+    /* 変形菌を見つけたとき: 枠のまわりがほんのり光る */
+    .magnifier.found {
+      box-shadow:
+        0 0 0 100vmax rgba(24, 38, 30, var(--shade)),
+        inset 0 0 22px rgba(0, 0, 0, 0.2),
+        0 0 34px 8px rgba(230, 209, 141, 0.65);
     }
 
     /* 案内 */
@@ -254,7 +291,7 @@
       found = true;
 
       message.textContent = "変形菌を発見しました！";
-      magnifier.style.borderColor = "#e6d18d";
+      magnifier.classList.add("found"); // 枠が光る
       successScreen.style.display = "flex";
     });
 
